@@ -1,0 +1,5 @@
+test_dev_mem:
+  script: make && bash test.sh
+  tags:
+    - VirtualBoxOS
+
