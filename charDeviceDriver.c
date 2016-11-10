@@ -22,7 +22,7 @@ int lastRead = 0;
 
 // Linked list implementation
 // --------------------------
-int ls_append(struct linked_list *ls, char *buf)
+int ls_append(struct linked_list *ls, const char *buf)
 {
 	struct node *cur = ls->head;
 	while (cur->next != NULL)
@@ -100,7 +100,7 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num, unsigned lon
 
 int init_module(void)
 {
-	Major = register_chdev(0, DEVICE_NAME, fops);
+	Major = register_chrdev(0, DEVICE_NAME, &fops);
 
 	if (Major < 0) {
 		printk(KERN_ALERT "Registering char device failed with %d\n", Major);
@@ -122,9 +122,7 @@ int init_module(void)
 void cleanup_module(void)
 {
 	// Unregister the device
-	int ret = unregister_chrdev(Major, DEVICE_NAME);
-	if (ret < 0)
-		printk(KERN_ALERT "An error occurred when unregistering the device: %d\n", ret);
+	unregister_chrdev(Major, DEVICE_NAME);
 
 	// Destroy message list
 	ls_destroy(&msg_ls);
@@ -158,7 +156,7 @@ static int device_release(struct inode *inode, struct file *file)
 	return SUCCESS;
 }
 
-static ssize_t device_read(struct file *filp, char __user *buffer, size_t length, loff_t * offset)
+static ssize_t device_read(struct file *filp, char __user *buffer, size_t length, loff_t *offset)
 {
 	int bytes_read = 0;
 
@@ -174,13 +172,13 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 		bytes_read++;
 	}
 
-	free(msg_ptr);
+	kfree(msg_ptr);
 	msg_ptr = NULL;
 
 	return bytes_read;
 }
 
-static ssize_t device_write(struct file *filp, const char __user *buffer, size_t length, loff_t * offset)
+static ssize_t device_write(struct file *filp, const char __user *buffer, size_t length, loff_t *offset)
 {
 	size_t msg_sz = length * sizeof(char);
 
@@ -189,8 +187,8 @@ static ssize_t device_write(struct file *filp, const char __user *buffer, size_t
 		return -EINVAL;
 	}
 
-	if (msg_ls->total_sz + msg_sz > max_msg_ls_len) {
-		printk(KERN_ALERT "Error: the total messages size is bigger than the maximum allowed")
+	if (msg_ls.total_sz + msg_sz > max_msg_ls_len) {
+		printk(KERN_ALERT "Error: the total messages size is bigger than the maximum allowed");
 		return -EAGAIN;
 	}
 
