@@ -1,12 +1,7 @@
-/*
- *  chardev.c: Creates a read-only char device that says how many times
- *  you've read from the dev file
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
-#include <asm/uaccess.h>	/* for put_user */
+#include <asm/uaccess.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include "charDeviceDriver.h"
@@ -22,16 +17,31 @@ int lastRead = 0;
 
 // Linked list implementation
 // --------------------------
-int ls_append(struct linked_list *ls, const char *buf)
+int ls_append(struct linked_list *ls, char *buf, size_t len)
 {
 	struct node *cur = ls->head;
-	while (cur->next != NULL)
+	if (!cur) {
+		ls->head = kmalloc(sizeof(struct node), GFP_KERNEL);
+		if (!ls->head)
+			return 0;
+
+		ls->head->msg = kmalloc(sizeof(char) * len, GFP_KERNEL);
+		strcpy(ls->head->msg, buf);
+		//ls->head->msg[len - 1] = '\0';
+		ls->head->next = NULL;
+
+		return 1;
+	}
+
+	while (cur->next)
 		cur = cur->next;
 
 	cur->next = kmalloc(sizeof(struct node), GFP_KERNEL);
 	if (!cur->next)
 		return 0;
-	cur->next->msg = buf;
+	cur->next->msg = kmalloc(sizeof(char) * len, GFP_KERNEL);
+	strcpy(cur->next->msg, buf);
+	//cur->next->msg[len - 1] = '\0';
 	cur->next->next = NULL;
 
 	// Update total size
@@ -50,14 +60,17 @@ int ls_remove(struct linked_list *ls, char **buf)
 	next_node = ls->head->next;
 
 	int len = strlen(ls->head->msg);
-	size_t msg_sz = len * sizeof(char);
+	printk("ls_remove: %d\n", len);
+	size_t msg_sz = len * sizeof(char); // -1
 
 	*buf = kmalloc(msg_sz, GFP_KERNEL);
 	strcpy(*buf, ls->head->msg);
+	printk("BUF: %s, %d\n", *buf, strlen(*buf));
 
 	// Update total size
 	ls->total_sz -= msg_sz;
 
+	kfree(ls->head->msg);
 	kfree(ls->head);
 	ls->head = next_node;
 
@@ -79,6 +92,11 @@ int ls_destroy(struct linked_list *ls)
 	ls->total_sz = 0;
 
 	return 1;
+}
+
+void ls_print(struct linked_list *ls)
+{
+
 }
 
 // Character device driver implementation
@@ -138,8 +156,7 @@ static int device_open(struct inode *inode, struct file *file)
 	Device_Open++;
 	mutex_unlock(&dev_lock);
 
-	if (!ls_remove(&msg_ls, &msg_ptr))
-		return -EAGAIN;
+	// ...?
 
 	try_module_get(THIS_MODULE);
 
@@ -160,6 +177,11 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 {
 	int bytes_read = 0;
 
+	if (!ls_remove(&msg_ls, &msg_ptr))
+		return -EAGAIN;
+
+	printk("removed STRING: %s, %d\n", msg_ptr, strlen(msg_ptr));
+
 	if (*msg_ptr == 0)
 		return 0;
 
@@ -172,6 +194,11 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 		bytes_read++;
 	}
 
+	if (*ptr == '\0') {
+		put_user(*ptr, buffer);
+		printk("READ: %d\n", bytes_read);
+	}
+
 	kfree(msg_ptr);
 	msg_ptr = NULL;
 
@@ -180,7 +207,7 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 
 static ssize_t device_write(struct file *filp, const char __user *buffer, size_t length, loff_t *offset)
 {
-	size_t msg_sz = length * sizeof(char);
+	size_t msg_sz = (length - 1) * sizeof(char);
 
 	if (msg_sz > max_msg_len) {
 		printk(KERN_ALERT "Error: the message size is bigger than 4K");
@@ -192,9 +219,15 @@ static ssize_t device_write(struct file *filp, const char __user *buffer, size_t
 		return -EAGAIN;
 	}
 
-	if (!ls_append(&msg_ls, buffer)) {
+	// Create proper buffer
+	char buf[length];
+	int i;
+	for (i = 0; i < length; i++)
+		buf[i] = buffer[i];
+	buf[i] = '\0';
+
+	if (!ls_append(&msg_ls, buf, length))
 		printk(KERN_ALERT "An error occurred when adding the message");
-	}
 
 	return length;
 }
