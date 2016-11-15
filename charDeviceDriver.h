@@ -6,7 +6,8 @@
 //dev_t dev_num;
 
 static int Major;		/* Major number assigned to our device driver */
-static int Device_Open = 0;
+//static int Device_Open = 0;
+
 static size_t max_msg_len = 4 * 1024 * sizeof(char);
 static size_t max_msg_ls_len = 2 * (1024 * 1024) * sizeof(char);
 
