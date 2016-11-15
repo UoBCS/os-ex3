@@ -9,7 +9,6 @@
 
 MODULE_LICENSE("GPL");
 
-//rwlock_t rw_op;
 DEFINE_MUTEX(rw_lock);
 
 // Linked list implementation
@@ -93,9 +92,12 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num, unsigned lon
 	int new_max = (int)ioctl_param;
 
 	if (new_max > max_msg_ls_len || new_max > msg_ls.total_sz) {
+		printk("\n\nNew max: %d\n\n", new_max);
 		max_msg_ls_len = new_max;
 		return SUCCESS;
 	}
+
+	printk("Ma nooooo\n");
 
 	return -EINVAL;
 }
